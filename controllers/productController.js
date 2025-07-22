@@ -1,11 +1,15 @@
-
 const Product = require("../models/Product");
 
-exports.getAllProducts = async (req, res) => {
+exports.getPaginatedProducts = async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = 20;
+  const skip = (page - 1) * limit;
+
   try {
-    const products = await Product.find();
+    const products = await Product.find().skip(skip).limit(limit).lean();
     res.json(products);
   } catch (err) {
-    res.status(500).json({ error: "Server Error" });
+    console.error("Error fetching paginated products:", err);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 };
