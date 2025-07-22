@@ -11,6 +11,9 @@ app.use(express.json());
 
 // Routes
 const productRoutes = require("./routes/products");
+const orderRoutes = require("./routes/orders");
+app.use("/api/orders", orderRoutes);
+
 app.use("/api/products", productRoutes);
 
 // MongoDB Connection
