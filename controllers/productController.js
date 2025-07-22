@@ -3,7 +3,7 @@ const Product = require("../models/Product");
 exports.getPaginatedProducts = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = 20;
+    const limit = 250;
     const skip = (page - 1) * limit;
 
     const category = req.query.category;
