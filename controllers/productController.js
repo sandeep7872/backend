@@ -1,5 +1,4 @@
 const Product = require("../models/Product");
-
 exports.getPaginatedProducts = async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = 20;
