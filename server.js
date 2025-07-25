@@ -14,10 +14,7 @@ const productRoutes = require("./routes/products");
 const orderRoutes = require("./routes/orders");
 app.use("/api/orders", orderRoutes);
 app.use("/api/products", productRoutes);
-app.get("/api/orders", async (req, res) => {
-  const orders = await Order.find().sort({ createdAt: -1 });
-  res.json(orders);
-});
+
 
 // MongoDB Connection
 mongoose
