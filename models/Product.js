@@ -9,7 +9,7 @@ const productSchema = new mongoose.Schema({
   bulkPrice: Number,
   bulkQty: Number,
   category: String,
-  image: String,
+  image: Array,
   inStock: Boolean
 });
 
