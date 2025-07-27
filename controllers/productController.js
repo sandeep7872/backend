@@ -1,6 +1,13 @@
 const Product = require("../models/Product");
 const asyncHandler = require("express-async-handler");
 
+// Helper to format product data
+const formatProduct = (product) => ({
+  ...product._doc,
+  // Ensure image is always an array
+  image: Array.isArray(product.image) ? product.image : [product.image || ''].filter(Boolean)
+});
+
 // @desc    Get paginated products
 // @route   GET /api/products
 // @access  Public
@@ -27,38 +34,23 @@ const getPaginatedProducts = asyncHandler(async (req, res) => {
   
   const products = await Product.find(query)
     .skip(skip)
-    .limit(limit)
-    .lean();
+    .limit(limit);
     
-  // Ensure all products have images array
-  const formattedProducts = products.map(product => ({
-    ...product,
-    images: product.images || [product.image || ''].filter(Boolean),
-    id: product._id.toString()
-  }));
-  
-  res.json(formattedProducts);
+  res.json(products.map(formatProduct));
 });
 
 // @desc    Get single product
 // @route   GET /api/products/:id
 // @access  Public
 const getProductById = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id).lean();
+  const product = await Product.findOne({ id: req.params.id });
   
   if (!product) {
     res.status(404);
     throw new Error("Product not found");
   }
   
-  // Format images array
-  const formattedProduct = {
-    ...product,
-    images: product.images || [product.image || ''].filter(Boolean),
-    id: product._id.toString()
-  };
-  
-  res.json(formattedProduct);
+  res.json(formatProduct(product));
 });
 
 // @desc    Create new product
@@ -66,6 +58,7 @@ const getProductById = asyncHandler(async (req, res) => {
 // @access  Private/Admin
 const createProduct = asyncHandler(async (req, res) => {
   const { 
+    id,
     name, 
     price, 
     bulkPrice, 
@@ -73,17 +66,17 @@ const createProduct = asyncHandler(async (req, res) => {
     category, 
     description, 
     inStock,
-    images
+    image  // Your existing image array
   } = req.body;
   
   // Validate required fields
-  if (!name || !price || !category) {
+  if (!id || !name || !price || !category) {
     res.status(400);
-    throw new Error("Please include name, price and category");
+    throw new Error("Please include id, name, price and category");
   }
   
-  // Create product with images array
   const product = await Product.create({
+    id,
     name,
     price,
     bulkPrice: bulkPrice || price,
@@ -91,21 +84,17 @@ const createProduct = asyncHandler(async (req, res) => {
     category,
     description: description || "",
     inStock: inStock !== undefined ? inStock : true,
-    images: images || []
+    image: Array.isArray(image) ? image : [image || ''].filter(Boolean)
   });
   
-  res.status(201).json({
-    ...product._doc,
-    images: product.images || [],
-    id: product._id.toString()
-  });
+  res.status(201).json(formatProduct(product));
 });
 
 // @desc    Update product
 // @route   PUT /api/products/:id
 // @access  Private/Admin
 const updateProduct = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id);
+  const product = await Product.findOne({ id: req.params.id });
   
   if (!product) {
     res.status(404);
@@ -121,32 +110,26 @@ const updateProduct = asyncHandler(async (req, res) => {
   product.description = req.body.description || product.description;
   product.inStock = req.body.inStock !== undefined ? req.body.inStock : product.inStock;
   
-  // Update images if provided
-  if (req.body.images !== undefined) {
-    product.images = req.body.images;
+  // Update image array if provided
+  if (req.body.image !== undefined) {
+    product.image = Array.isArray(req.body.image) ? req.body.image : [req.body.image || ''].filter(Boolean);
   }
   
   const updatedProduct = await product.save();
   
-  res.json({
-    ...updatedProduct._doc,
-    images: updatedProduct.images || [],
-    id: updatedProduct._id.toString()
-  });
+  res.json(formatProduct(updatedProduct));
 });
 
 // @desc    Delete product
 // @route   DELETE /api/products/:id
 // @access  Private/Admin
 const deleteProduct = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id);
+  const product = await Product.findOneAndDelete({ id: req.params.id });
   
   if (!product) {
     res.status(404);
     throw new Error("Product not found");
   }
-  
-  await product.remove();
   
   res.json({ 
     success: true,
