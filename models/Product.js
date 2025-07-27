@@ -1,6 +1,11 @@
 const mongoose = require("mongoose");
 
 const productSchema = new mongoose.Schema({
+  id: {
+    type: Number,
+    required: true,
+    unique: true
+  },
   name: {
     type: String,
     required: true,
@@ -24,20 +29,15 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  description: {
-    type: String,
-    default: ""
-  },
   inStock: {
     type: Boolean,
     default: true
   },
-  images: {
+  image: {  // This is your existing array field
     type: [String],
     default: []
   },
-  // Keeping image for backward compatibility
-  image: {
+  description: {
     type: String,
     default: ""
   }
@@ -46,16 +46,6 @@ const productSchema = new mongoose.Schema({
   toJSON: {
     virtuals: true,
     transform: function(doc, ret) {
-      ret.id = ret._id;
-      delete ret._id;
-      delete ret.__v;
-      return ret;
-    }
-  },
-  toObject: {
-    virtuals: true,
-    transform: function(doc, ret) {
-      ret.id = ret._id;
       delete ret._id;
       delete ret.__v;
       return ret;
