@@ -18,11 +18,12 @@ const productSchema = new mongoose.Schema({
   },
   bulkPrice: {
     type: Number,
+    required: true,
     min: 0
   },
   bulkQty: {
     type: Number,
-    default: 1,
+    required: true,
     min: 1
   },
   category: {
@@ -31,11 +32,18 @@ const productSchema = new mongoose.Schema({
   },
   inStock: {
     type: Boolean,
+    required: true,
     default: true
   },
-  image: {  // This is your existing array field
+  image: {  // Array of strings as in your example
     type: [String],
-    default: []
+    required: true,
+    validate: {
+      validator: function(array) {
+        return array.length > 0 && array.every(url => typeof url === 'string');
+      },
+      message: 'At least one valid image URL is required'
+    }
   },
   description: {
     type: String,
@@ -44,8 +52,9 @@ const productSchema = new mongoose.Schema({
 }, {
   timestamps: true,
   toJSON: {
-    virtuals: true,
     transform: function(doc, ret) {
+      // Remove MongoDB-specific fields and return clean object
+      ret.id = ret.id.toString(); // Ensure ID is string if needed
       delete ret._id;
       delete ret.__v;
       return ret;
@@ -53,10 +62,18 @@ const productSchema = new mongoose.Schema({
   }
 });
 
-// Set bulkPrice to price if not provided
+// Set default bulkPrice if not provided (though it's required in schema)
 productSchema.pre("save", function(next) {
-  if (!this.bulkPrice) {
+  if (!this.bulkPrice && this.price) {
     this.bulkPrice = this.price;
+  }
+  next();
+});
+
+// Ensure image is always an array (backward compatibility)
+productSchema.pre("save", function(next) {
+  if (this.image && !Array.isArray(this.image)) {
+    this.image = [this.image];
   }
   next();
 });
