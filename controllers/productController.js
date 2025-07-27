@@ -1,140 +1,242 @@
 const Product = require("../models/Product");
 const asyncHandler = require("express-async-handler");
-
-// Helper to format product data
-const formatProduct = (product) => ({
-  ...product._doc,
-  // Ensure image is always an array
-  image: Array.isArray(product.image) ? product.image : [product.image || ''].filter(Boolean)
-});
+const { validationResult } = require("express-validator");
 
 // @desc    Get paginated products
 // @route   GET /api/products
 // @access  Public
 const getPaginatedProducts = asyncHandler(async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 250;
-  const skip = (page - 1) * limit;
-  
-  const category = req.query.category;
-  const search = req.query.search;
-  
-  let query = {};
-  
-  if (category && category !== "all") {
-    query.category = category;
+  // Validate query parameters
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
   }
-  
-  if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { description: { $regex: search, $options: "i" } }
-    ];
+
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 250;
+    const skip = (page - 1) * limit;
+
+    const { category, search } = req.query;
+
+    // Build query object
+    const query = {};
+    if (category && category !== "all") query.category = category;
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } }
+      ];
+    }
+
+    // Get products with pagination
+    const [products, totalCount] = await Promise.all([
+      Product.find(query)
+        .skip(skip)
+        .limit(limit)
+        .sort({ id: 1 })
+        .lean(),
+      Product.countDocuments(query)
+    ]);
+
+    // Format products for frontend
+    const formattedProducts = products.map(product => ({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      bulkPrice: product.bulkPrice,
+      bulkQty: product.bulkQty,
+      category: product.category,
+      inStock: product.inStock,
+      image: product.image, // Already an array from model
+      description: product.description
+    }));
+
+    res.json({
+      success: true,
+      count: formattedProducts.length,
+      total: totalCount,
+      page,
+      pages: Math.ceil(totalCount / limit),
+      data: formattedProducts
+    });
+
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
-  
-  const products = await Product.find(query)
-    .skip(skip)
-    .limit(limit);
-    
-  res.json(products.map(formatProduct));
 });
 
-// @desc    Get single product
+// @desc    Get single product by ID
 // @route   GET /api/products/:id
 // @access  Public
 const getProductById = asyncHandler(async (req, res) => {
-  const product = await Product.findOne({ id: req.params.id });
-  
-  if (!product) {
-    res.status(404);
-    throw new Error("Product not found");
+  try {
+    const product = await Product.findOne({ id: req.params.id }).lean();
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...product,
+        // Ensure image is always an array
+        image: Array.isArray(product.image) ? product.image : [product.image || ""]
+      }
+    });
+
+  } catch (error) {
+    console.error("Error fetching product:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
-  
-  res.json(formatProduct(product));
 });
 
 // @desc    Create new product
 // @route   POST /api/products
 // @access  Private/Admin
 const createProduct = asyncHandler(async (req, res) => {
-  const { 
-    id,
-    name, 
-    price, 
-    bulkPrice, 
-    bulkQty, 
-    category, 
-    description, 
-    inStock,
-    image  // Your existing image array
-  } = req.body;
-  
-  // Validate required fields
-  if (!id || !name || !price || !category) {
-    res.status(400);
-    throw new Error("Please include id, name, price and category");
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
   }
-  
-  const product = await Product.create({
-    id,
-    name,
-    price,
-    bulkPrice: bulkPrice || price,
-    bulkQty: bulkQty || 1,
-    category,
-    description: description || "",
-    inStock: inStock !== undefined ? inStock : true,
-    image: Array.isArray(image) ? image : [image || ''].filter(Boolean)
-  });
-  
-  res.status(201).json(formatProduct(product));
+
+  try {
+    const {
+      id,
+      name,
+      price,
+      bulkPrice,
+      bulkQty,
+      category,
+      inStock,
+      image,
+      description
+    } = req.body;
+
+    // Check if product ID already exists
+    const existingProduct = await Product.findOne({ id });
+    if (existingProduct) {
+      return res.status(400).json({
+        success: false,
+        message: "Product with this ID already exists"
+      });
+    }
+
+    const product = await Product.create({
+      id,
+      name,
+      price,
+      bulkPrice: bulkPrice || price,
+      bulkQty: bulkQty || 1,
+      category,
+      inStock: inStock !== undefined ? inStock : true,
+      image: Array.isArray(image) ? image : [image || ""],
+      description: description || ""
+    });
+
+    res.status(201).json({
+      success: true,
+      data: product
+    });
+
+  } catch (error) {
+    console.error("Error creating product:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
 });
 
 // @desc    Update product
 // @route   PUT /api/products/:id
 // @access  Private/Admin
 const updateProduct = asyncHandler(async (req, res) => {
-  const product = await Product.findOne({ id: req.params.id });
-  
-  if (!product) {
-    res.status(404);
-    throw new Error("Product not found");
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
   }
-  
-  // Update fields
-  product.name = req.body.name || product.name;
-  product.price = req.body.price || product.price;
-  product.bulkPrice = req.body.bulkPrice || product.bulkPrice;
-  product.bulkQty = req.body.bulkQty || product.bulkQty;
-  product.category = req.body.category || product.category;
-  product.description = req.body.description || product.description;
-  product.inStock = req.body.inStock !== undefined ? req.body.inStock : product.inStock;
-  
-  // Update image array if provided
-  if (req.body.image !== undefined) {
-    product.image = Array.isArray(req.body.image) ? req.body.image : [req.body.image || ''].filter(Boolean);
+
+  try {
+    const product = await Product.findOneAndUpdate(
+      { id: req.params.id },
+      {
+        $set: {
+          ...req.body,
+          // Handle image update
+          image: Array.isArray(req.body.image) ? req.body.image : [req.body.image || ""],
+          // Ensure these fields remain numbers
+          price: parseFloat(req.body.price),
+          bulkPrice: parseFloat(req.body.bulkPrice),
+          bulkQty: parseInt(req.body.bulkQty)
+        }
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      data: product
+    });
+
+  } catch (error) {
+    console.error("Error updating product:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
-  
-  const updatedProduct = await product.save();
-  
-  res.json(formatProduct(updatedProduct));
 });
 
 // @desc    Delete product
 // @route   DELETE /api/products/:id
 // @access  Private/Admin
 const deleteProduct = asyncHandler(async (req, res) => {
-  const product = await Product.findOneAndDelete({ id: req.params.id });
-  
-  if (!product) {
-    res.status(404);
-    throw new Error("Product not found");
+  try {
+    const product = await Product.findOneAndDelete({ id: req.params.id });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Product removed successfully"
+    });
+
+  } catch (error) {
+    console.error("Error deleting product:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
-  
-  res.json({ 
-    success: true,
-    message: "Product removed"
-  });
 });
 
 module.exports = {
